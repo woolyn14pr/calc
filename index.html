@@ -46,7 +46,7 @@
       </div>
       <div>
         <label title="Balance after your deposit (the balance you will hold after the cut-off date).">Closing Balance (£)</label>
-        <input id="B" type="number" step="0.01" value="400000">
+        <input id="B" type="number" step="0.01" value="40000">
       </div>
     </div>
 
@@ -89,7 +89,7 @@
         <span id="rate">–</span>
       </p>
       <p>
-        <b>Deposit by (cut-off date):</b>
+        <b>Deposit Cut-Off Date:</b>
         <span id="cutoff">–</span>
       </p>
     </div>
@@ -137,30 +137,30 @@ function daysInMonth(mon) {
  */
 function solveDaysRequired(A, B, days, avgTarget) {
   if (B === A) {
-    return (avgTarget <= A) ? -1 : NaN; // -1 => already meets target, NaN => impossible
+    return (avgTarget <= A) ? -1 : NaN;
   }
   return ((avgTarget - A) * days) / (B - A);
 }
 
 /**
- * Cut Off Day Number:
- * IF(DaysRequired < 0, special, DaysInMonth - ROUNDUP(DaysRequired,0))
+ * Cut-off day number:
+ * IF(daysRequired < 0) => already meets target from day 1
+ * else day = daysInMonth - ceil(daysRequired)
+ * Fix: if day <= 0, show day 1 (no day 0 exists)
  */
 function cutOffDayNumber(days, daysRequired) {
   if (!Number.isFinite(daysRequired)) return NaN;
-  if (daysRequired < 0) return null; // already meets target from start of month
+  if (daysRequired < 0) return null; // already met from day 1
+
   const roundedUp = Math.ceil(daysRequired);
-  return days - roundedUp;
+  const day = days - roundedUp;
+
+  return (day <= 0) ? 1 : day; // <-- key fix: day 0 becomes 1st
 }
 
-function makeCutoffText(dayNum, mon, year) {
-  // Already meets target without any deposit:
-  if (dayNum === null) return `No deposit needed (already meets target from 1 ${mon} ${year})`;
-
-  // If the math gives day 0 or less, it really means "deposit from the 1st":
+function makeDateString(dayNum, mon, year) {
+  if (dayNum === null) return `1 ${mon} ${year}`; // clearer: target met from day 1
   if (!Number.isFinite(dayNum)) return "–";
-  if (dayNum <= 0) return `1 ${mon} ${year}`;
-
   return `${dayNum} ${mon} ${year}`;
 }
 
@@ -210,34 +210,44 @@ function calculate() {
     return;
   }
 
-  // Target Avg Balance based on selected target rate
+  // Determine target Avg Balance from selected target rate:
   const avgTarget = (targetRate === 0.0233) ? 20000 : 40000;
 
-  // Solve for Days Required (GoalSeek-style)
+  // If neither opening nor closing reaches the target, it's impossible to hit that target average.
+  if (Math.max(A, B) < avgTarget) {
+    const targetText = (avgTarget === 20000) ? "£20,000+" : "£40,000+";
+    avgEl.textContent = "£" + formatMoney(((A * (days - 0)) + (0 * B)) / days);
+    rateEl.textContent = formatPercent(rateFromAvg(((A * (days - 0)) + (0 * B)) / days));
+    cutoffEl.textContent = `Does not meet balance (needs ${targetText})`;
+    return;
+  }
+
+  // GoalSeek equivalent: solve for Days Required
   const daysRequired = solveDaysRequired(A, B, days, avgTarget);
 
+  // Store hidden
   DaysReqHidden.value = Number.isFinite(daysRequired) ? daysRequired : "";
   DaysHidden.value = days;
 
   if (!Number.isFinite(daysRequired)) {
-    errEl.textContent = "Cannot reach the target with these balances (check Opening vs Closing).";
+    const targetText = (avgTarget === 20000) ? "£20,000+" : "£40,000+";
+    cutoffEl.textContent = `Does not meet balance (needs ${targetText})`;
     return;
   }
 
-  // Avg Balance using Excel formula, with solved daysRequired
+  // Avg Balance using Excel formula with solved daysRequired:
   const avgBalance = ((A * (days - daysRequired)) + (daysRequired * B)) / days;
 
-  // Client Deposit Rate (based on Avg Balance tiers)
+  // Rate from tiers
   let clientRate = rateFromAvg(avgBalance);
 
-  // Explicit rule (kept):
+  // Explicit rule: if targeting 2.33% but avg < 20k, rate is 0%
   if (targetRate === 0.0233 && avgBalance < 20000) {
     clientRate = 0;
   }
 
-  // Cut off date text
   const dayNum = cutOffDayNumber(days, daysRequired);
-  const cutOffText = makeCutoffText(dayNum, mon, year);
+  const cutOffText = makeDateString(dayNum, mon, year);
 
   avgEl.textContent = "£" + formatMoney(avgBalance);
   rateEl.textContent = formatPercent(clientRate);
@@ -259,7 +269,7 @@ function exportCSV() {
   const header = [
     "OpeningBalance","ClosingBalance","Month","Year","DaysInMonth",
     "TargetRate","TargetAvgBalance","DaysRequired",
-    "AverageBalance","ClientDepositRate","CutOffDate"
+    "AverageBalance","ClientDepositRate","DepositCutOffDate"
   ].join(",");
 
   const row = [
