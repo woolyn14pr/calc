@@ -15,15 +15,19 @@
     .out { margin-top:14px; padding:12px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:10px; }
     .out p { margin:6px 0; }
     #error { margin-top:10px; color:#b91c1c; font-weight:600; }
-    small { color:#6b7280; display:block; margin-top:6px; }
-    .hint { color:#6b7280; font-size:12px; margin-top:6px; }
+    small { color:#6b7280; display:block; margin-top:6px; line-height:1.35; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#eef2ff; border:1px solid #e5e7eb; font-size:12px; }
   </style>
 </head>
 
 <body>
   <div class="card">
     <h3>Average Balance Calculator</h3>
-    <small>Uses your XLS formulas (Avg Balance, Client Rate, Cut Off logic). Days-in-month is hidden but still used.</small>
+    <small>
+      Days Required is calculated like your VBA macros (GoalSeek):
+      <span class="pill">Target £40,000</span> or <span class="pill">Target £20,000</span>.
+      Days in month is still used, but hidden for a cleaner UI.
+    </small>
 
     <div class="row">
       <div>
@@ -36,23 +40,21 @@
       </div>
     </div>
 
-    <label>Month (C4)</label>
-    <select id="C">
-      <option>Jan</option><option>Feb</option><option>Mar</option><option>Apr</option>
-      <option>May</option><option>Jun</option><option selected>Jul</option><option>Aug</option>
-      <option>Sep</option><option>Oct</option><option>Nov</option><option>Dec</option>
-    </select>
-
     <div class="row">
       <div>
-        <label>Days Required (D4)</label>
-        <input id="D" type="number" step="0.01" value="3.1">
-        <div class="hint">Changing this updates Cut Off Day using: DaysInMonth − CEILING(DaysRequired)</div>
+        <label>Month (C4)</label>
+        <select id="C">
+          <option>Jan</option><option>Feb</option><option>Mar</option><option>Apr</option>
+          <option>May</option><option>Jun</option><option selected>Jul</option><option>Aug</option>
+          <option>Sep</option><option>Oct</option><option>Nov</option><option>Dec</option>
+        </select>
       </div>
       <div>
-        <label>Cut Off Day (in month)</label>
-        <input id="CutOffDay" type="number" step="1" min="1" max="31" placeholder="e.g. 27">
-        <div class="hint">Changing this updates Days Required using: DaysInMonth − CutOffDay</div>
+        <label>Target Avg Balance (GoalSeek)</label>
+        <select id="Target">
+          <option value="40000" selected>£40,000 (3.33% tier)</option>
+          <option value="20000">£20,000 (2.33% tier)</option>
+        </select>
       </div>
     </div>
 
@@ -62,39 +64,41 @@
     <div id="error"></div>
 
     <div class="out">
+      <p><b>Days Required (D4 – GoalSeek result):</b> <span id="daysReq">–</span></p>
       <p><b>Avg Balance (E4):</b> <span id="avg">–</span></p>
       <p><b>Client Rate (F4):</b> <span id="rate">–</span></p>
+      <p><b>Remaining Days:</b> <span id="remain">–</span></p>
       <p><b>Cut Off Date (H4):</b> <span id="cutoff">–</span></p>
     </div>
   </div>
 
 <script>
-/** Field list sheet (A2:B14) */
+/** Field list: Month -> Days (hidden but used) */
 const daysByMonth = {
   Jan: 31, Feb: 28, Mar: 31, Apr: 30,
   May: 31, Jun: 30, Jul: 31, Aug: 31,
   Sep: 30, Oct: 31, Nov: 30, Dec: 31
 };
 
-/** Field list rates (E3, E4, E5) */
+/** Field list rates (as used previously) */
 const rateTier = {
-  lt20000: 0,       // Field list!E3
-  between: 0.0233,  // Field list!E4 (>= 20k and < 40k)
-  gte40000: 0.0333  // Field list!E5
+  lt20000: 0,       // < 20,000
+  between: 0.0233,  // 20,000 - 39,999.99
+  gte40000: 0.0333  // >= 40,000
 };
 
 let last = null;
-let syncing = false;
 
 const AEl = document.getElementById("A");
 const BEl = document.getElementById("B");
 const CEl = document.getElementById("C");
-const DEl = document.getElementById("D");
-const CutOffDayEl = document.getElementById("CutOffDay");
+const TEl = document.getElementById("Target");
 
 const errEl = document.getElementById("error");
+const daysReqEl = document.getElementById("daysReq");
 const avgEl = document.getElementById("avg");
 const rateEl = document.getElementById("rate");
+const remainEl = document.getElementById("remain");
 const cutoffEl = document.getElementById("cutoff");
 
 function formatMoney(x) {
@@ -103,123 +107,114 @@ function formatMoney(x) {
 }
 
 function getClientRate(avgBalance) {
-  // Excel: IF(E4<20000,E3,IF(E4>=40000,E5,E4))
+  // Excel: IF(E4<20000, E3, IF(E4>=40000, E5, E4))
   if (avgBalance < 20000) return rateTier.lt20000;
   if (avgBalance >= 40000) return rateTier.gte40000;
   return rateTier.between;
 }
 
-function daysInMonth(month) {
-  return daysByMonth[month] ?? NaN;
+function avgBalanceFor(A, B, days, D) {
+  // Excel E4:
+  // =(((A*(days - D)) + (D*B))) / days
+  return ((A * (days - D)) + (D * B)) / days;
 }
 
 /**
- * Excel H4:
- * =IF(D4<0,"Meets minimum", DaysInMonth - ROUNDUP(D4,0))
+ * VBA GoalSeek equivalent:
+ * Solve for D such that AvgBalance(D) = target
+ *
+ * Avg = (A*days + D*(B-A)) / days
+ * => D = days * (target - A) / (B - A)
  */
-function getCutOffDay(daysInMo, daysRequired) {
-  if (daysRequired < 0) return "Meets minimum";
-  return (daysInMo - Math.ceil(daysRequired));
-}
+function goalSeekDaysRequired(A, B, days, target) {
+  const denom = (B - A);
 
-function cutOffDisplay(cutOffDay, month) {
-  // User asked: add the month after the cut off number
-  if (cutOffDay === "Meets minimum") return "Meets minimum";
-  if (!Number.isFinite(cutOffDay)) return "–";
-  return `${cutOffDay} ${month}`;
-}
-
-/** Keep Days Required and Cut Off Day in sync (dynamic) */
-function syncFromDaysRequired() {
-  if (syncing) return;
-  syncing = true;
-
-  const month = CEl.value;
-  const dim = daysInMonth(month);
-  const d = Number(DEl.value);
-
-  if (Number.isFinite(dim) && Number.isFinite(d)) {
-    const cut = getCutOffDay(dim, d);
-    if (cut !== "Meets minimum" && Number.isFinite(cut)) {
-      CutOffDayEl.value = cut;
-    } else {
-      CutOffDayEl.value = "";
-    }
+  // If opening == closing, avg is constant, cannot goal seek unless already at target.
+  if (denom === 0) {
+    return { ok: false, reason: "Opening and Closing are the same. Avg Balance cannot change, so Days Required cannot be calculated." };
   }
 
-  syncing = false;
+  const D = days * (target - A) / denom;
+  return { ok: true, D };
 }
 
-function syncFromCutOffDay() {
-  if (syncing) return;
-  syncing = true;
-
-  const month = CEl.value;
-  const dim = daysInMonth(month);
-  const cut = Number(CutOffDayEl.value);
-
-  if (Number.isFinite(dim) && Number.isFinite(cut)) {
-    // Inverse relationship to keep it dynamic:
-    // DaysRequired = DaysInMonth - CutOffDay
-    const d = (dim - cut);
-    DEl.value = d;
+function calculateRemainingAndCutoff(daysInMonth, D, month) {
+  // Your sheet formula:
+  // Cut Off Date (H4) = IF(D4<0,"Meets minimum", daysInMonth - ROUNDUP(D4,0))
+  // We'll also output Remaining Days alongside it (same underlying calculation).
+  if (D < 0) {
+    return {
+      remainingDaysText: "Meets minimum",
+      cutoffText: `Meets minimum (${month})`
+    };
   }
 
-  syncing = false;
+  const dRoundedUp = Math.ceil(D);
+  const remaining = daysInMonth - dRoundedUp;
+
+  // If target cannot be reached within the month, remaining will go negative.
+  if (remaining < 0) {
+    return {
+      remainingDaysText: "Not possible in this month",
+      cutoffText: `Not possible (${month})`
+    };
+  }
+
+  // Cut off date as a day number + month (what you asked)
+  return {
+    remainingDaysText: remaining.toString(),
+    cutoffText: `${remaining} ${month}`
+  };
 }
-
-DEl.addEventListener("input", syncFromDaysRequired);
-CutOffDayEl.addEventListener("input", syncFromCutOffDay);
-CEl.addEventListener("change", () => {
-  // when month changes, re-sync using current Days Required
-  syncFromDaysRequired();
-});
-
-syncFromDaysRequired();
 
 function calculate() {
   errEl.textContent = "";
+  daysReqEl.textContent = "–";
   avgEl.textContent = "–";
   rateEl.textContent = "–";
+  remainEl.textContent = "–";
   cutoffEl.textContent = "–";
   last = null;
 
   const A = Number(AEl.value);
   const B = Number(BEl.value);
   const month = CEl.value;
-  const D = Number(DEl.value);
-  const dim = daysInMonth(month);
+  const days = Number(daysByMonth[month]);
+  const target = Number(TEl.value);
 
-  if (!Number.isFinite(dim)) {
+  if (!daysByMonth[month]) {
     errEl.textContent = "Month not found in Field list.";
     return;
   }
-  if (![A, B, D].every(n => Number.isFinite(n))) {
-    errEl.textContent = "Please enter valid numbers for Opening, Closing, and Days Required.";
+  if (![A, B, target].every(n => Number.isFinite(n))) {
+    errEl.textContent = "Please enter valid numbers for Opening, Closing, and Target.";
     return;
   }
 
-  // Excel E4:
-  // =(((A4*(DaysInMonth-D4))+(D4*B4)))/DaysInMonth
-  const avgBalance = ((A * (dim - D)) + (D * B)) / dim;
+  // GoalSeek replacement (dynamic Days Required)
+  const gs = goalSeekDaysRequired(A, B, days, target);
+  if (!gs.ok) {
+    errEl.textContent = gs.reason;
+    return;
+  }
 
-  // Excel F4:
-  const clientRate = getClientRate(avgBalance);
+  const D = gs.D;
 
-  // Excel H4 (day number) + month for display:
-  const cutDay = getCutOffDay(dim, D);
-  const cutText = cutOffDisplay(cutDay, month);
+  // In Excel, GoalSeek makes E4 hit the target (within numeric tolerance).
+  // We'll compute it exactly using the formula:
+  const avg = avgBalanceFor(A, B, days, D);
+  const rate = getClientRate(avg);
 
-  avgEl.textContent = formatMoney(avgBalance);
-  rateEl.textContent = clientRate.toFixed(4);
-  cutoffEl.textContent = cutText;
+  // Remaining days + cut off date (from your Cut Off formula)
+  const { remainingDaysText, cutoffText } = calculateRemainingAndCutoff(days, D, month);
 
-  last = {
-    A, B, month, dim,
-    daysRequired: D,
-    avgBalance, clientRate,
-    cutOff: cutText
-  };
+  daysReqEl.textContent = Number.isFinite(D) ? D.toFixed(2) : "–";
+  avgEl.textContent = formatMoney(avg);
+  rateEl.textContent = rate.toFixed(4);
+  remainEl.textContent = remainingDaysText;
+  cutoffEl.textContent = cutoffText;
+
+  last = { A, B, month, daysInMonth: days, target, daysRequired: D, avgBalance: avg, clientRate: rate, remainingDaysText, cutoffText };
 }
 
 function exportCSV() {
@@ -230,14 +225,14 @@ function exportCSV() {
   }
 
   const header = [
-    "OpeningBalance","ClosingBalance","Month","DaysInMonth",
-    "DaysRequired","AvgBalance","ClientRate","CutOffDate"
+    "OpeningBalance","ClosingBalance","Month","DaysInMonth","TargetAvgBalance",
+    "DaysRequired","AvgBalance","ClientRate","RemainingDays","CutOffDate"
   ].join(",");
 
   const row = [
-    last.A, last.B, last.month, last.dim,
+    last.A, last.B, last.month, last.daysInMonth, last.target,
     last.daysRequired, last.avgBalance, last.clientRate,
-    `"${last.cutOff}"`
+    `"${last.remainingDaysText}"`, `"${last.cutoffText}"`
   ].join(",");
 
   const csv = header + "\n" + row;
@@ -248,6 +243,14 @@ function exportCSV() {
   link.download = "avg-balance-calculator.csv";
   link.click();
 }
+
+// Optional: auto-calc when inputs change (feels nicer)
+[AEl, BEl, CEl, TEl].forEach(el => el.addEventListener("input", calculate));
+CEl.addEventListener("change", calculate);
+TEl.addEventListener("change", calculate);
+
+// Initial calc
+calculate();
 </script>
 </body>
 </html>
