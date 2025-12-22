@@ -2,10 +2,10 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Avg Balance Calculator</title>
+  <title>Average Balance Calculator</title>
   <style>
     body { font-family: Arial; background:#f4f6f8; padding:20px; }
-    .card { background:#fff; padding:20px; max-width:560px; border-radius:10px; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+    .card { background:#fff; padding:20px; max-width:560px; border-radius:10px; box-shadow:0 2px 10px rgba(0,0,0,.06); }
     label { display:block; margin-top:12px; font-weight:600; }
     input, select { width:100%; padding:8px; margin-top:6px; border:1px solid #d6dbe1; border-radius:8px; }
     .row { display:flex; gap:12px; }
@@ -15,8 +15,7 @@
     .out { margin-top:14px; padding:12px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:10px; }
     .out p { margin:6px 0; }
     #error { margin-top:10px; color:#b91c1c; font-weight:600; }
-    small { color:#6b7280; display:block; margin-top:6px; line-height:1.35; }
-    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#eef2ff; border:1px solid #e5e7eb; font-size:12px; }
+    small { color:#6b7280; display:block; margin-top:6px; }
   </style>
 </head>
 
@@ -24,25 +23,23 @@
   <div class="card">
     <h3>Average Balance Calculator</h3>
     <small>
-      Days Required is calculated like your VBA macros (GoalSeek):
-      <span class="pill">Target £40,000</span> or <span class="pill">Target £20,000</span>.
-      Days in month is still used, but hidden for a cleaner UI.
+      Days Required is calculated automatically to achieve the selected rate.
     </small>
 
     <div class="row">
       <div>
-        <label>Opening Balance (£) (A4)</label>
+        <label>Opening Balance (£)</label>
         <input id="A" type="number" step="0.01" value="0">
       </div>
       <div>
-        <label>Balance Closing (£) (B4)</label>
+        <label>Closing Balance (£)</label>
         <input id="B" type="number" step="0.01" value="400000">
       </div>
     </div>
 
     <div class="row">
       <div>
-        <label>Month (C4)</label>
+        <label>Month</label>
         <select id="C">
           <option>Jan</option><option>Feb</option><option>Mar</option><option>Apr</option>
           <option>May</option><option>Jun</option><option selected>Jul</option><option>Aug</option>
@@ -50,206 +47,126 @@
         </select>
       </div>
       <div>
-        <label>Target Avg Balance (GoalSeek)</label>
-        <select id="Target">
-          <option value="40000" selected>£40,000 (3.33% tier)</option>
-          <option value="20000">£20,000 (2.33% tier)</option>
+        <label>Target Rate</label>
+        <select id="target">
+          <option value="40000" selected>3.33%</option>
+          <option value="20000">2.33%</option>
         </select>
       </div>
     </div>
 
     <button onclick="calculate()">Calculate</button>
-    <button class="secondary" onclick="exportCSV()">Export CSV (Excel)</button>
+    <button class="secondary" onclick="exportCSV()">Export CSV</button>
 
     <div id="error"></div>
 
     <div class="out">
-      <p><b>Days Required (D4 – GoalSeek result):</b> <span id="daysReq">–</span></p>
-      <p><b>Avg Balance (E4):</b> <span id="avg">–</span></p>
-      <p><b>Client Rate (F4):</b> <span id="rate">–</span></p>
-      <p><b>Remaining Days:</b> <span id="remain">–</span></p>
-      <p><b>Cut Off Date (H4):</b> <span id="cutoff">–</span></p>
+      <p><b>Days Required:</b> <span id="daysReq">–</span></p>
+      <p><b>Average Balance:</b> <span id="avg">–</span></p>
+      <p><b>Client Rate:</b> <span id="rate">–</span></p>
+      <p><b>Cut Off Date:</b> <span id="cutoff">–</span></p>
+      <p><b>Remaining Days:</b> <span id="remaining">–</span></p>
     </div>
   </div>
 
 <script>
-/** Field list: Month -> Days (hidden but used) */
 const daysByMonth = {
-  Jan: 31, Feb: 28, Mar: 31, Apr: 30,
-  May: 31, Jun: 30, Jul: 31, Aug: 31,
-  Sep: 30, Oct: 31, Nov: 30, Dec: 31
+  Jan:31, Feb:28, Mar:31, Apr:30,
+  May:31, Jun:30, Jul:31, Aug:31,
+  Sep:30, Oct:31, Nov:30, Dec:31
 };
 
-/** Field list rates (as used previously) */
 const rateTier = {
-  lt20000: 0,       // < 20,000
-  between: 0.0233,  // 20,000 - 39,999.99
-  gte40000: 0.0333  // >= 40,000
+  lt20000: 0,
+  between: 0.0233,
+  gte40000: 0.0333
 };
-
-let last = null;
 
 const AEl = document.getElementById("A");
 const BEl = document.getElementById("B");
 const CEl = document.getElementById("C");
-const TEl = document.getElementById("Target");
+const targetEl = document.getElementById("target");
 
 const errEl = document.getElementById("error");
 const daysReqEl = document.getElementById("daysReq");
 const avgEl = document.getElementById("avg");
 const rateEl = document.getElementById("rate");
-const remainEl = document.getElementById("remain");
 const cutoffEl = document.getElementById("cutoff");
+const remainingEl = document.getElementById("remaining");
 
 function formatMoney(x) {
-  if (!Number.isFinite(x)) return "–";
-  return x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return x.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function formatPct(x) {
+  return (x * 100).toFixed(2) + "%";
 }
 
-function getClientRate(avgBalance) {
-  // Excel: IF(E4<20000, E3, IF(E4>=40000, E5, E4))
-  if (avgBalance < 20000) return rateTier.lt20000;
-  if (avgBalance >= 40000) return rateTier.gte40000;
+function getClientRate(avg) {
+  if (avg < 20000) return rateTier.lt20000;
+  if (avg >= 40000) return rateTier.gte40000;
   return rateTier.between;
 }
 
-function avgBalanceFor(A, B, days, D) {
-  // Excel E4:
-  // =(((A*(days - D)) + (D*B))) / days
+function solveDaysRequired(A,B,days,target) {
+  if (A === B) {
+    if (A >= target) return {status:"MEETS"};
+    return {status:"IMPOSSIBLE"};
+  }
+  const D = (target - A) * days / (B - A);
+  if (D < 0) return {status:"MEETS"};
+  return {status:"OK", value:D};
+}
+
+function avgBalance(A,B,days,D) {
   return ((A * (days - D)) + (D * B)) / days;
-}
-
-/**
- * VBA GoalSeek equivalent:
- * Solve for D such that AvgBalance(D) = target
- *
- * Avg = (A*days + D*(B-A)) / days
- * => D = days * (target - A) / (B - A)
- */
-function goalSeekDaysRequired(A, B, days, target) {
-  const denom = (B - A);
-
-  // If opening == closing, avg is constant, cannot goal seek unless already at target.
-  if (denom === 0) {
-    return { ok: false, reason: "Opening and Closing are the same. Avg Balance cannot change, so Days Required cannot be calculated." };
-  }
-
-  const D = days * (target - A) / denom;
-  return { ok: true, D };
-}
-
-function calculateRemainingAndCutoff(daysInMonth, D, month) {
-  // Your sheet formula:
-  // Cut Off Date (H4) = IF(D4<0,"Meets minimum", daysInMonth - ROUNDUP(D4,0))
-  // We'll also output Remaining Days alongside it (same underlying calculation).
-  if (D < 0) {
-    return {
-      remainingDaysText: "Meets minimum",
-      cutoffText: `Meets minimum (${month})`
-    };
-  }
-
-  const dRoundedUp = Math.ceil(D);
-  const remaining = daysInMonth - dRoundedUp;
-
-  // If target cannot be reached within the month, remaining will go negative.
-  if (remaining < 0) {
-    return {
-      remainingDaysText: "Not possible in this month",
-      cutoffText: `Not possible (${month})`
-    };
-  }
-
-  // Cut off date as a day number + month (what you asked)
-  return {
-    remainingDaysText: remaining.toString(),
-    cutoffText: `${remaining} ${month}`
-  };
 }
 
 function calculate() {
   errEl.textContent = "";
-  daysReqEl.textContent = "–";
-  avgEl.textContent = "–";
-  rateEl.textContent = "–";
-  remainEl.textContent = "–";
-  cutoffEl.textContent = "–";
-  last = null;
-
   const A = Number(AEl.value);
   const B = Number(BEl.value);
   const month = CEl.value;
-  const days = Number(daysByMonth[month]);
-  const target = Number(TEl.value);
+  const days = daysByMonth[month];
+  const target = Number(targetEl.value);
 
-  if (!daysByMonth[month]) {
-    errEl.textContent = "Month not found in Field list.";
-    return;
-  }
-  if (![A, B, target].every(n => Number.isFinite(n))) {
-    errEl.textContent = "Please enter valid numbers for Opening, Closing, and Target.";
+  if (![A,B].every(Number.isFinite)) {
+    errEl.textContent = "Please enter valid balances.";
     return;
   }
 
-  // GoalSeek replacement (dynamic Days Required)
-  const gs = goalSeekDaysRequired(A, B, days, target);
-  if (!gs.ok) {
-    errEl.textContent = gs.reason;
+  const solved = solveDaysRequired(A,B,days,target);
+
+  if (solved.status === "IMPOSSIBLE") {
+    daysReqEl.textContent = "Not achievable";
+    avgEl.textContent = "–";
+    rateEl.textContent = "–";
+    cutoffEl.textContent = "–";
+    remainingEl.textContent = "–";
     return;
   }
 
-  const D = gs.D;
+  const D = solved.status === "MEETS" ? 0 : solved.value;
+  const avg = avgBalance(A,B,days,D);
 
-  // In Excel, GoalSeek makes E4 hit the target (within numeric tolerance).
-  // We'll compute it exactly using the formula:
-  const avg = avgBalanceFor(A, B, days, D);
-  const rate = getClientRate(avg);
-
-  // Remaining days + cut off date (from your Cut Off formula)
-  const { remainingDaysText, cutoffText } = calculateRemainingAndCutoff(days, D, month);
-
-  daysReqEl.textContent = Number.isFinite(D) ? D.toFixed(2) : "–";
+  daysReqEl.textContent = solved.status === "MEETS" ? "Meets minimum" : D.toFixed(2);
   avgEl.textContent = formatMoney(avg);
-  rateEl.textContent = rate.toFixed(4);
-  remainEl.textContent = remainingDaysText;
-  cutoffEl.textContent = cutoffText;
+  rateEl.textContent = formatPct(getClientRate(avg));
 
-  last = { A, B, month, daysInMonth: days, target, daysRequired: D, avgBalance: avg, clientRate: rate, remainingDaysText, cutoffText };
+  const cut = days - Math.ceil(D);
+  cutoffEl.textContent = solved.status === "MEETS" ? "Meets minimum" : `${cut} ${month}`;
+  remainingEl.textContent = solved.status === "MEETS" ? days : cut;
 }
 
 function exportCSV() {
-  errEl.textContent = "";
-  if (!last) {
-    errEl.textContent = "Calculate first, then export.";
-    return;
-  }
-
-  const header = [
-    "OpeningBalance","ClosingBalance","Month","DaysInMonth","TargetAvgBalance",
-    "DaysRequired","AvgBalance","ClientRate","RemainingDays","CutOffDate"
-  ].join(",");
-
-  const row = [
-    last.A, last.B, last.month, last.daysInMonth, last.target,
-    last.daysRequired, last.avgBalance, last.clientRate,
-    `"${last.remainingDaysText}"`, `"${last.cutoffText}"`
-  ].join(",");
-
-  const csv = header + "\n" + row;
-
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = "avg-balance-calculator.csv";
-  link.click();
+  const csv = "Opening,Closing,Month,DaysRequired,AverageBalance,ClientRate\n" +
+    `${AEl.value},${BEl.value},${CEl.value},${daysReqEl.textContent},${avgEl.textContent},${rateEl.textContent}`;
+  const blob = new Blob([csv],{type:"text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "avg-balance-calculator.csv";
+  a.click();
 }
 
-// Optional: auto-calc when inputs change (feels nicer)
-[AEl, BEl, CEl, TEl].forEach(el => el.addEventListener("input", calculate));
-CEl.addEventListener("change", calculate);
-TEl.addEventListener("change", calculate);
-
-// Initial calc
 calculate();
 </script>
 </body>
