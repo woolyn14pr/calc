@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body {
+  font-family: Arial;
+  background: #f5f5f5;
+  padding: 20px;
+}
+
+.box {
+  background: white;
+  padding: 20px;
+  max-width: 400px;
+  border-radius: 8px;
+}
+
+label {
+  display: block;
+  margin-top: 10px;
+}
+
+input, select {
+  width: 100%;
+  padding: 6px;
+}
+
+button {
+  margin-top: 15px;
+  padding: 10px;
+  width: 100%;
+  background: #0078d4;
+  color: white;
+  border: none;
+  border-radius: 5px;
+}
+
+#error {
+  color: red;
+  margin-top: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="box">
+  <h3>Calculation</h3>
+
+  <label>A</label>
+  <input id="A" type="number">
+
+  <label>B</label>
+  <input id="B" type="number">
+
+  <label>D</label>
+  <input id="D" type="number">
+
+  <label>C (Field)</label>
+  <select id="C">
+    <option value="">Select</option>
+    <option value="Field1">Field1</option>
+    <option value="Field2">Field2</option>
+    <option value="Field3">Field3</option>
+  </select>
+
+  <button onclick="calculate()">Calculate</button>
+  <button onclick="exportCSV()">Export to Excel</button>
+
+  <p><b>Result:</b> <span id="result"></span></p>
+  <div id="error"></div>
+</div>
+
+<script>
+// Field list (replaces VLOOKUP)
+const fieldList = {
+  Field1: 10,
+  Field2: 20,
+  Field3: 30
+};
+
+let lastResult = "";
+
+function calculate() {
+  let A = Number(Ainput.value);
+  let B = Number(Binput.value);
+  let D = Number(Dinput.value);
+  let C = Cinput.value;
+
+  error.textContent = "";
+  result.textContent = "";
+
+  if (!C || !fieldList[C]) {
+    error.textContent = "Please select a valid field";
+    return;
+  }
+
+  let lookup = fieldList[C];
+
+  lastResult = ((A * (lookup - D)) + (D * B)) / lookup;
+  result.textContent = lastResult.toFixed(2);
+}
+
+function exportCSV() {
+  if (lastResult === "") {
+    error.textContent = "Calculate first";
+    return;
+  }
+
+  let csv =
+    "A,B,D,C,Result\n" +
+    `${Ainput.value},${Binput.value},${Dinput.value},${Cinput.value},${lastResult}`;
+
+  let blob = new Blob([csv], { type: "text/csv" });
+  let link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "result.csv";
+  link.click();
+}
+
+// Shortcuts
+const Ainput = document.getElementById("A");
+const Binput = document.getElementById("B");
+const Dinput = document.getElementById("D");
+const Cinput = document.getElementById("C");
+const result = document.getElementById("result");
+const error = document.getElementById("error");
+</script>
+
+</body>
+</html>
