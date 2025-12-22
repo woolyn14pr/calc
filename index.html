@@ -89,7 +89,7 @@
         <span id="rate">–</span>
       </p>
       <p>
-        <b>Cut Off Date:</b>
+        <b>Deposit by (cut-off date):</b>
         <span id="cutoff">–</span>
       </p>
     </div>
@@ -132,24 +132,35 @@ function daysInMonth(mon) {
 /**
  * GoalSeek equivalent:
  * Avg = A + D*(B-A)/days
+ * Solve D for AvgTarget:
  * D = (AvgTarget - A) * days / (B - A)
  */
 function solveDaysRequired(A, B, days, avgTarget) {
   if (B === A) {
-    return (avgTarget <= A) ? -1 : NaN;
+    return (avgTarget <= A) ? -1 : NaN; // -1 => already meets target, NaN => impossible
   }
   return ((avgTarget - A) * days) / (B - A);
 }
 
+/**
+ * Cut Off Day Number:
+ * IF(DaysRequired < 0, special, DaysInMonth - ROUNDUP(DaysRequired,0))
+ */
 function cutOffDayNumber(days, daysRequired) {
   if (!Number.isFinite(daysRequired)) return NaN;
-  if (daysRequired < 0) return null;
-  return days - Math.ceil(daysRequired);
+  if (daysRequired < 0) return null; // already meets target from start of month
+  const roundedUp = Math.ceil(daysRequired);
+  return days - roundedUp;
 }
 
-function makeDateString(dayNum, mon, year) {
+function makeCutoffText(dayNum, mon, year) {
+  // Already meets target without any deposit:
+  if (dayNum === null) return `No deposit needed (already meets target from 1 ${mon} ${year})`;
+
+  // If the math gives day 0 or less, it really means "deposit from the 1st":
   if (!Number.isFinite(dayNum)) return "–";
-  if (dayNum === null) return "Already qualifies";
+  if (dayNum <= 0) return `1 ${mon} ${year}`;
+
   return `${dayNum} ${mon} ${year}`;
 }
 
@@ -170,9 +181,10 @@ const cutoffEl = document.getElementById("cutoff");
 
 let last = null;
 
-// Default year
+// Default year to current year
 (function initYear() {
-  YEl.value = new Date().getFullYear();
+  const now = new Date();
+  YEl.value = now.getFullYear();
 })();
 
 function calculate() {
@@ -190,53 +202,83 @@ function calculate() {
   const targetRate = Number(TargetRateEl.value);
 
   if (![A, B, year].every(n => Number.isFinite(n))) {
-    errEl.textContent = "Please enter valid numbers.";
+    errEl.textContent = "Please enter valid numbers for Opening Balance, Closing Balance, and Year.";
     return;
   }
   if (!Number.isFinite(days)) {
-    errEl.textContent = "Month not found.";
+    errEl.textContent = "Month not found in field list.";
     return;
   }
 
+  // Target Avg Balance based on selected target rate
   const avgTarget = (targetRate === 0.0233) ? 20000 : 40000;
+
+  // Solve for Days Required (GoalSeek-style)
   const daysRequired = solveDaysRequired(A, B, days, avgTarget);
 
   DaysReqHidden.value = Number.isFinite(daysRequired) ? daysRequired : "";
   DaysHidden.value = days;
 
   if (!Number.isFinite(daysRequired)) {
-    errEl.textContent = "Cannot reach the target with these balances.";
+    errEl.textContent = "Cannot reach the target with these balances (check Opening vs Closing).";
     return;
   }
 
+  // Avg Balance using Excel formula, with solved daysRequired
   const avgBalance = ((A * (days - daysRequired)) + (daysRequired * B)) / days;
-  const clientRate = rateFromAvg(avgBalance);
+
+  // Client Deposit Rate (based on Avg Balance tiers)
+  let clientRate = rateFromAvg(avgBalance);
+
+  // Explicit rule (kept):
+  if (targetRate === 0.0233 && avgBalance < 20000) {
+    clientRate = 0;
+  }
+
+  // Cut off date text
+  const dayNum = cutOffDayNumber(days, daysRequired);
+  const cutOffText = makeCutoffText(dayNum, mon, year);
 
   avgEl.textContent = "£" + formatMoney(avgBalance);
   rateEl.textContent = formatPercent(clientRate);
-  cutoffEl.textContent = makeDateString(
-    cutOffDayNumber(days, daysRequired),
-    mon,
-    year
-  );
+  cutoffEl.textContent = cutOffText;
 
   last = {
-    opening: A, closing: B, month: mon, year,
-    avgBalance, clientRate, cutOffText: cutoffEl.textContent
+    opening: A, closing: B, month: mon, year, daysInMonth: days,
+    targetRate, avgTarget, daysRequired, avgBalance, clientRate, cutOffText
   };
 }
 
 function exportCSV() {
-  if (!last) return;
+  errEl.textContent = "";
+  if (!last) {
+    errEl.textContent = "Calculate first, then export.";
+    return;
+  }
 
-  const header =
-    "OpeningBalance,ClosingBalance,Month,Year,AverageBalance,ClientDepositRate,CutOffDate\n";
-  const row =
-    `${last.opening},${last.closing},${last.month},${last.year},` +
-    `${last.avgBalance},${(last.clientRate*100).toFixed(2)}%,` +
-    `"${last.cutOffText}"`;
+  const header = [
+    "OpeningBalance","ClosingBalance","Month","Year","DaysInMonth",
+    "TargetRate","TargetAvgBalance","DaysRequired",
+    "AverageBalance","ClientDepositRate","CutOffDate"
+  ].join(",");
 
-  const blob = new Blob([header + row], { type: "text/csv;charset=utf-8" });
+  const row = [
+    last.opening,
+    last.closing,
+    last.month,
+    last.year,
+    last.daysInMonth,
+    (last.targetRate * 100).toFixed(2) + "%",
+    last.avgTarget,
+    last.daysRequired,
+    last.avgBalance,
+    (last.clientRate * 100).toFixed(2) + "%",
+    `"${last.cutOffText}"`
+  ].join(",");
+
+  const csv = header + "\n" + row;
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
   link.download = "client-deposit-rate-calculator.csv";
@@ -245,4 +287,3 @@ function exportCSV() {
 </script>
 </body>
 </html>
-
