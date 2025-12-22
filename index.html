@@ -2,315 +2,346 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Avg Balance Calculator</title>
+  <title>Client Deposit Rate Calculator</title>
   <style>
     body { font-family: Arial; background:#f4f6f8; padding:20px; }
-    .card { background:#fff; padding:20px; max-width:560px; border-radius:12px; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+    .card {
+      background:#fff; padding:20px; max-width:560px; border-radius:12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.06);
+    }
     label { display:block; margin-top:12px; font-weight:700; }
-    .hint { font-weight:400; color:#6b7280; font-size:12px; margin-top:4px; }
-    input, select { width:100%; padding:10px; margin-top:6px; border:1px solid #d6dbe1; border-radius:10px; }
+    input, select {
+      width:100%; padding:10px; margin-top:6px;
+      border:1px solid #d6dbe1; border-radius:10px;
+    }
     .row { display:flex; gap:12px; }
     .row > div { flex:1; }
-    button { margin-top:14px; width:100%; padding:12px; border:0; border-radius:10px; background:#0078d4; color:#fff; font-weight:800; cursor:pointer; }
+    button {
+      margin-top:14px; width:100%; padding:12px;
+      border:0; border-radius:10px; background:#0078d4; color:#fff;
+      font-weight:800; cursor:pointer;
+    }
     button.secondary { background:#374151; }
-    .out { margin-top:14px; padding:14px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:12px; }
+    .out {
+      margin-top:14px; padding:14px; background:#f8fafc;
+      border:1px solid #e5e7eb; border-radius:12px;
+    }
     .out p { margin:8px 0; }
-    .divider { height:1px; background:#e5e7eb; margin:14px 0; }
+    .muted { color:#6b7280; font-size: 13px; }
     #error { margin-top:10px; color:#b91c1c; font-weight:700; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .divider { margin-top:14px; border-top:1px solid #e5e7eb; padding-top:14px; }
   </style>
 </head>
 
 <body>
   <div class="card">
-    <h3>Average Balance Calculator</h3>
-    <div class="hint">
-      Clean view — “Days in month” and “Days required” are calculated in the background.
+    <h3>Client Deposit Rate Calculator</h3>
+    <div class="muted">
+      Tooltips are available — hover over labels to see what each field means.
     </div>
 
     <div class="row">
       <div>
-        <label title="Your balance at the start of the month.">Opening Balance (£)</label>
-        <input id="opening" type="number" step="0.01" value="0">
+        <label title="Balance at the start of the month.">Opening Balance (£)</label>
+        <input id="A" type="number" step="0.01" value="0">
       </div>
       <div>
-        <label title="Your balance after you add funds (the higher balance used for the remaining days).">Closing Balance (£)</label>
-        <input id="closing" type="number" step="0.01" value="400000">
+        <label title="Balance after your deposit (the balance you will hold after the cut-off date).">Closing Balance (£)</label>
+        <input id="B" type="number" step="0.01" value="400000">
       </div>
     </div>
 
     <div class="row">
       <div>
-        <label title="Used to determine the number of days in the month.">Month</label>
-        <select id="month">
+        <label title="Month used to determine days in month (hidden but used in calculations).">Month</label>
+        <select id="C">
           <option>Jan</option><option>Feb</option><option>Mar</option><option>Apr</option>
-          <option>May</option><option>Jun</option><option selected>Jul</option><option>Aug</option>
+          <option>May</option><option>Jun</option><option>Jul</option><option>Aug</option>
           <option>Sep</option><option>Oct</option><option>Nov</option><option>Dec</option>
         </select>
       </div>
       <div>
-        <label title="Used for leap years and to format the cut off date.">Year</label>
-        <select id="year">
-          <option>2025</option>
-          <option selected>2026</option>
-          <option>2027</option>
-        </select>
+        <label title="Year used for the cut-off date display.">Year</label>
+        <input id="Y" type="number" step="1">
       </div>
     </div>
 
-    <label title="Choose the rate you want. The calculator uses the Excel GoalSeek logic (20k / 40k average balance thresholds).">
-      Client Deposit Rate
+    <label title="Select the rate you want to achieve. This triggers the GoalSeek-style calculation.">
+      Client Deposit Rate (target)
     </label>
-    <select id="targetRate">
-      <option value="0">0%</option>
+    <select id="TargetRate">
       <option value="0.0233">2.33%</option>
       <option value="0.0333" selected>3.33%</option>
     </select>
-    <div class="hint">
-      2.33% targets an average balance of £20,000. 3.33% targets an average balance of £40,000.
-    </div>
+
+    <!-- Hidden fields (still used internally) -->
+    <input id="DaysRequiredHidden" type="hidden">
+    <input id="DaysInMonthHidden" type="hidden">
 
     <button onclick="calculate()">Calculate</button>
-    <button class="secondary" onclick="exportCSV()">Export CSV</button>
+    <button class="secondary" onclick="exportCSV()">Export CSV (Excel)</button>
 
     <div id="error"></div>
 
     <div class="out">
       <p><b>Average Balance:</b> <span id="avg">–</span></p>
-
       <p>
-        <b>Client Deposit Rate:</b>
-        <span id="achievedRate">–</span>
-        <span class="hint" title="This is based on the calculated Average Balance (same tier logic as the Excel field list).">
-          (based on average balance)
-        </span>
+        <b>Client Deposit Rate (based on Average Balance):</b>
+        <span id="rate">–</span>
+      </p>
+      <p>
+        <b>Cut Off Date:</b>
+        <span id="cutoff">–</span>
       </p>
 
-      <p><b>Cut Off Date:</b> <span id="cutoff">–</span></p>
-
-      <div class="divider"></div>
-
-      <p class="mono"><b>To achieve the selected Client Deposit Rate:</b></p>
-      <p><b>Minimum Closing Balance needed:</b> <span id="minClosing">–</span></p>
-      <p><b>Cut Off Date for that minimum:</b> <span id="minCutoff">–</span></p>
+      <div class="divider">
+        <p><b>Minimum Closing Balance & Cut Off Date (deposit today):</b></p>
+        <p class="muted">
+          This assumes you deposit <b>today</b> and hold that closing balance until month-end.
+          (If “today” is outside the selected month, this will show N/A.)
+        </p>
+        <p><b>Minimum Closing Balance:</b> <span id="minClose">–</span></p>
+        <p><b>Cut Off Date:</b> <span id="minCutoff">–</span></p>
+      </div>
     </div>
   </div>
 
 <script>
-  // ---- helpers ----
-  const monthIndex = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
+/** Field list: Month -> Days */
+const daysByMonth = {
+  Jan: 31, Feb: 28, Mar: 31, Apr: 30,
+  May: 31, Jun: 30, Jul: 31, Aug: 31,
+  Sep: 30, Oct: 31, Nov: 30, Dec: 31
+};
 
-  function daysInMonth(year, monthAbbr) {
-    const m = monthIndex[monthAbbr];
-    // JS Date trick: day 0 of next month = last day of current month
-    return new Date(Number(year), m + 1, 0).getDate();
+/**
+ * Rate tiers (from your Field list logic):
+ * < 20k => 0%
+ * 20k to < 40k => 2.33%
+ * >= 40k => 3.33%
+ */
+function rateFromAvg(avg) {
+  if (avg < 20000) return 0;
+  if (avg >= 40000) return 0.0333;
+  return 0.0233;
+}
+
+function formatMoney(x) {
+  if (!Number.isFinite(x)) return "–";
+  return x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatPercent(dec) {
+  if (!Number.isFinite(dec)) return "–";
+  return (dec * 100).toFixed(2) + "%";
+}
+
+function monthIndex(mon) {
+  return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].indexOf(mon);
+}
+
+function daysInMonth(mon) {
+  return daysByMonth[mon] ?? NaN;
+}
+
+/**
+ * GoalSeek equivalent:
+ * Avg = A + D*(B-A)/days
+ * Solve D for AvgTarget:
+ * D = (AvgTarget - A) * days / (B - A)
+ *
+ * Matches VBA:
+ * Range("E4").GoalSeek Goal:=40000, ChangingCell:=Range("D4")
+ * Range("E4").GoalSeek Goal:=20000, ChangingCell:=Range("D4")
+ */
+function solveDaysRequired(A, B, days, avgTarget) {
+  // If B == A, average is always A, cannot change with D.
+  if (B === A) {
+    return (avgTarget <= A) ? -1 : NaN; // -1 => meets minimum, NaN => impossible
+  }
+  return ((avgTarget - A) * days) / (B - A);
+}
+
+/**
+ * Cut Off Date (based on your sheet logic):
+ * IF(DaysRequired < 0, "Meets minimum", DaysInMonth - ROUNDUP(DaysRequired,0))
+ */
+function cutOffDayNumber(days, daysRequired) {
+  if (!Number.isFinite(daysRequired)) return NaN;
+  if (daysRequired < 0) return null; // Meets minimum
+  const roundedUp = Math.ceil(daysRequired);
+  return days - roundedUp;
+}
+
+function makeDateString(dayNum, mon, year) {
+  if (!Number.isFinite(dayNum)) return "–";
+  if (dayNum === null) return "Meets minimum";
+  if (dayNum <= 0) return "Meets minimum";
+  // Example: "28 Jul 2025"
+  return `${dayNum} ${mon} ${year}`;
+}
+
+// Elements
+const AEl = document.getElementById("A");
+const BEl = document.getElementById("B");
+const CEl = document.getElementById("C");
+const YEl = document.getElementById("Y");
+const TargetRateEl = document.getElementById("TargetRate");
+
+const DaysReqHidden = document.getElementById("DaysRequiredHidden");
+const DaysHidden = document.getElementById("DaysInMonthHidden");
+
+const errEl = document.getElementById("error");
+const avgEl = document.getElementById("avg");
+const rateEl = document.getElementById("rate");
+const cutoffEl = document.getElementById("cutoff");
+
+const minCloseEl = document.getElementById("minClose");
+const minCutoffEl = document.getElementById("minCutoff");
+
+let last = null;
+
+// Default year to current year (user asked to update year)
+(function initYear() {
+  const now = new Date();
+  YEl.value = now.getFullYear();
+})();
+
+function calculate() {
+  errEl.textContent = "";
+  avgEl.textContent = "–";
+  rateEl.textContent = "–";
+  cutoffEl.textContent = "–";
+  minCloseEl.textContent = "–";
+  minCutoffEl.textContent = "–";
+  last = null;
+
+  const A = Number(AEl.value);
+  const B = Number(BEl.value);
+  const mon = CEl.value;
+  const year = Number(YEl.value);
+  const days = daysInMonth(mon);
+  const targetRate = Number(TargetRateEl.value);
+
+  if (![A, B, year].every(n => Number.isFinite(n))) {
+    errEl.textContent = "Please enter valid numbers for Opening Balance, Closing Balance, and Year.";
+    return;
+  }
+  if (!Number.isFinite(days)) {
+    errEl.textContent = "Month not found in field list.";
+    return;
   }
 
-  function formatMoney(x) {
-    if (!Number.isFinite(x)) return "–";
-    return x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // Determine target Avg Balance from selected target rate:
+  // 2.33% => target 20,000
+  // 3.33% => target 40,000
+  const avgTarget = (targetRate === 0.0233) ? 20000 : 40000;
+
+  // GoalSeek equivalent: solve for Days Required
+  const daysRequired = solveDaysRequired(A, B, days, avgTarget);
+
+  // Store hidden (still used)
+  DaysReqHidden.value = Number.isFinite(daysRequired) ? daysRequired : "";
+  DaysHidden.value = days;
+
+  // Compute Avg Balance using Excel formula:
+  // Avg = ((A*(days-D)) + (D*B)) / days
+  // Use the solved daysRequired (dynamic)
+  if (!Number.isFinite(daysRequired)) {
+    errEl.textContent = "Cannot reach the target with these balances (check Opening vs Closing).";
+    return;
   }
 
-  function formatRateDecimalToPct(r) {
-    if (!Number.isFinite(r)) return "–";
-    return (r * 100).toFixed(2) + "%";
+  const avgBalance = ((A * (days - daysRequired)) + (daysRequired * B)) / days;
+
+  // Client Deposit Rate (based on Avg Balance tiers)
+  let clientRate = rateFromAvg(avgBalance);
+
+  // Your rule:
+  // If average balance is < 20000 for 2.33 target, client deposit rate should be 0%
+  // (This is already true via tier logic, but we keep it explicit.)
+  if (targetRate === 0.0233 && avgBalance < 20000) {
+    clientRate = 0;
   }
 
-  function getTierRate(avgBalance) {
-    // Matches your Excel logic: <20k => 0, 20k-<40k => 2.33%, >=40k => 3.33%
-    if (avgBalance < 20000) return 0;
-    if (avgBalance >= 40000) return 0.0333;
-    return 0.0233;
-  }
+  // Cut off date includes month + year
+  const dayNum = cutOffDayNumber(days, daysRequired);
+  const cutOffText = makeDateString(dayNum, mon, year);
 
-  function cutoffText(days, requiredDays, monthAbbr, year) {
-    // Matches Excel: IF(D<0,"Meets minimum", Days - ROUNDUP(D,0))
-    if (!Number.isFinite(requiredDays)) return "–";
-    if (requiredDays < 0) return "Meets minimum";
-    const dayNumber = days - Math.ceil(requiredDays);
-    // Keep it human-safe
-    if (dayNumber < 0) return "Not achievable this month";
-    return `${dayNumber} ${monthAbbr} ${year}`;
-  }
+  // Outputs
+  avgEl.textContent = "£" + formatMoney(avgBalance);
+  rateEl.textContent = formatPercent(clientRate);
+  cutoffEl.textContent = cutOffText;
 
-  // Solve GoalSeek analytically (because your macro is GoalSeek on D):
-  // Avg = (A*days + D*(B-A)) / days
-  // Goal = G => D = ((G - A) * days) / (B - A)
-  function goalSeekDaysRequired(A, B, days, goalAvg) {
-    const denom = (B - A);
-    if (denom === 0) {
-      // Avg is always A
-      if (A >= goalAvg) return -1; // "Meets minimum"
-      return Infinity;             // impossible
-    }
-    const D = ((goalAvg - A) * days) / denom;
-    return D;
-  }
+  // Extra bottom calculation:
+  // Minimum closing balance if you deposit TODAY and hold until month end.
+  // If today is outside selected month/year => N/A
+  const today = new Date();
+  const selMonthIdx = monthIndex(mon);
 
-  function avgBalanceFrom(A, B, days, D) {
-    return ((A * (days - D)) + (D * B)) / days;
-  }
+  const isSameMonthYear =
+    (today.getFullYear() === year) && (today.getMonth() === selMonthIdx);
 
-  // Given a target goal and a chosen integer day requirement (Dint),
-  // compute the minimum closing balance needed if opening stays A:
-  // Goal = (A*days + D*(B-A))/days => B = A + ((Goal-A)*days)/D
-  function minClosingForGoal(A, days, goalAvg, Dint) {
-    if (Dint <= 0) return Infinity;
-    return A + ((goalAvg - A) * days) / Dint;
-  }
+  if (!isSameMonthYear) {
+    minCloseEl.textContent = "N/A";
+    minCutoffEl.textContent = "N/A";
+  } else {
+    const todayDay = today.getDate();
+    const remainingIncludingToday = (days - todayDay + 1);
 
-  // ---- UI elements ----
-  const openingEl = document.getElementById("opening");
-  const closingEl = document.getElementById("closing");
-  const monthEl = document.getElementById("month");
-  const yearEl = document.getElementById("year");
-  const targetRateEl = document.getElementById("targetRate");
-
-  const errEl = document.getElementById("error");
-  const avgEl = document.getElementById("avg");
-  const achievedRateEl = document.getElementById("achievedRate");
-  const cutoffEl = document.getElementById("cutoff");
-  const minClosingEl = document.getElementById("minClosing");
-  const minCutoffEl = document.getElementById("minCutoff");
-
-  let last = null;
-
-  function calculate() {
-    errEl.textContent = "";
-    avgEl.textContent = "–";
-    achievedRateEl.textContent = "–";
-    cutoffEl.textContent = "–";
-    minClosingEl.textContent = "–";
-    minCutoffEl.textContent = "–";
-    last = null;
-
-    const A = Number(openingEl.value);
-    const B = Number(closingEl.value);
-    const month = monthEl.value;
-    const year = Number(yearEl.value);
-    const days = daysInMonth(year, month);
-
-    if (![A, B].every(n => Number.isFinite(n))) {
-      errEl.textContent = "Please enter valid numbers for Opening Balance and Closing Balance.";
-      return;
-    }
-
-    // Selected target rate => goal average
-    const targetRate = Number(targetRateEl.value);
-    let goalAvg = null;
-
-    if (targetRate === 0.0333) goalAvg = 40000;
-    else if (targetRate === 0.0233) goalAvg = 20000;
-    else goalAvg = null; // 0% has no goalseek requirement
-
-    // --- dynamic Days Required (GoalSeek equivalent) ---
-    let D = null;
-
-    if (goalAvg === null) {
-      // If target is 0%, we treat it as "no goalseek" and just report with D=0 (no time at higher balance).
-      // This keeps the calculator deterministic while Days Required is hidden.
-      D = 0;
+    if (remainingIncludingToday <= 0) {
+      minCloseEl.textContent = "N/A";
+      minCutoffEl.textContent = "N/A";
     } else {
-      D = goalSeekDaysRequired(A, B, days, goalAvg);
+      // Solve B_needed with D = remainingIncludingToday:
+      // AvgTarget = A + D*(B-A)/days  ->  B = A + (AvgTarget - A)*days / D
+      const minClosing = A + ((avgTarget - A) * days) / remainingIncludingToday;
+      minCloseEl.textContent = "£" + formatMoney(minClosing);
+      minCutoffEl.textContent = makeDateString(todayDay, mon, year);
     }
-
-    // Average balance using the (hidden) D
-    let avg = null;
-    if (D === Infinity) {
-      avg = A; // since B==A case (handled) or impossible; best we can display
-    } else {
-      avg = avgBalanceFrom(A, B, days, D);
-    }
-
-    // Achieved tier rate based on average
-    const achievedRate = getTierRate(avg);
-
-    // Cut off date display (day + month + year)
-    const cutoff = cutoffText(days, D, month, year);
-
-    // --- extra bottom calculation: minimum closing balance + cutoff to achieve selected rate ---
-    let minClosing = "–";
-    let minCutoff = "–";
-
-    if (goalAvg !== null) {
-      if (A >= goalAvg) {
-        // Already meets minimum average without needing the higher balance period
-        minClosing = formatMoney(A);
-        minCutoff = `Meets minimum (${month} ${year})`;
-      } else {
-        // Use the integer version of days required as Excel does with ROUNDUP for cut off.
-        // This represents "how many days at the higher balance".
-        const Dint = (D === Infinity) ? 0 : Math.ceil(D);
-
-        if (Dint <= 0) {
-          minClosing = "–";
-          minCutoff = "Meets minimum";
-        } else if (Dint > days) {
-          // Not achievable with any cut off inside the month for the given closing.
-          // The absolute minimum closing balance occurs when D = days (whole month at closing) => B = goalAvg.
-          minClosing = formatMoney(goalAvg);
-          minCutoff = `1 ${month} ${year} (full month needed)`;
-        } else {
-          const Bmin = minClosingForGoal(A, days, goalAvg, Dint);
-          minClosing = formatMoney(Bmin);
-          minCutoff = cutoffText(days, Dint, month, year);
-        }
-      }
-    } else {
-      // Target 0%: minimum is trivially the opening balance
-      minClosing = formatMoney(A);
-      minCutoff = `Meets minimum (${month} ${year})`;
-    }
-
-    // If impossible with given numbers, show a clear message without exposing “remaining days”
-    if (goalAvg !== null && (D === Infinity || cutoff.includes("Not achievable"))) {
-      errEl.textContent = "With the current Opening/Closing balance, the selected Client Deposit Rate may not be achievable this month.";
-    }
-
-    avgEl.textContent = formatMoney(avg);
-    achievedRateEl.textContent = formatRateDecimalToPct(achievedRate);
-    cutoffEl.textContent = cutoff;
-
-    minClosingEl.textContent = minClosing;
-    minCutoffEl.textContent = minCutoff;
-
-    last = { A, B, month, year, days, targetRate, goalAvg, D, avg, achievedRate, cutoff, minClosing, minCutoff };
   }
 
-  function exportCSV() {
-    errEl.textContent = "";
-    if (!last) {
-      errEl.textContent = "Calculate first, then export.";
-      return;
-    }
+  last = {
+    opening: A, closing: B, month: mon, year, daysInMonth: days,
+    targetRate, avgTarget, daysRequired, avgBalance, clientRate, cutOffText
+  };
+}
 
-    const header = [
-      "OpeningBalance","ClosingBalance","Month","Year","DaysInMonth",
-      "TargetClientDepositRate","TargetGoalAvgBalance",
-      "DaysRequired(GoalSeek)","AverageBalance","AchievedClientDepositRate",
-      "CutOffDate","MinimumClosingBalanceNeeded","CutOffDateForMinimum"
-    ].join(",");
-
-    const row = [
-      last.A, last.B, last.month, last.year, last.days,
-      (last.targetRate * 100).toFixed(2) + "%",
-      (last.goalAvg ?? ""),
-      (last.D === Infinity ? "Infinity" : last.D),
-      last.avg,
-      (last.achievedRate * 100).toFixed(2) + "%",
-      `"${last.cutoff}"`,
-      `"${last.minClosing}"`,
-      `"${last.minCutoff}"`
-    ].join(",");
-
-    const csv = header + "\n" + row;
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "avg-balance-calculator.csv";
-    link.click();
+function exportCSV() {
+  errEl.textContent = "";
+  if (!last) {
+    errEl.textContent = "Calculate first, then export.";
+    return;
   }
+
+  const header = [
+    "OpeningBalance","ClosingBalance","Month","Year","DaysInMonth",
+    "TargetRate","TargetAvgBalance","DaysRequired",
+    "AverageBalance","ClientDepositRate","CutOffDate"
+  ].join(",");
+
+  const row = [
+    last.opening,
+    last.closing,
+    last.month,
+    last.year,
+    last.daysInMonth,
+    (last.targetRate * 100).toFixed(2) + "%",
+    last.avgTarget,
+    last.daysRequired,
+    last.avgBalance,
+    (last.clientRate * 100).toFixed(2) + "%",
+    `"${last.cutOffText}"`
+  ].join(",");
+
+  const csv = header + "\n" + row;
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "client-deposit-rate-calculator.csv";
+  link.click();
+}
 </script>
 </body>
 </html>
