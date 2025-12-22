@@ -1,23 +1,26 @@
 <!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
+<title>Avg Balance Calculator</title>
+
 <style>
 body {
   font-family: Arial;
-  background: #f5f5f5;
+  background: #f4f6f8;
   padding: 20px;
 }
 
-.box {
+.card {
   background: white;
   padding: 20px;
-  max-width: 400px;
+  max-width: 420px;
   border-radius: 8px;
 }
 
 label {
-  display: block;
   margin-top: 10px;
+  display: block;
 }
 
 input, select {
@@ -27,104 +30,71 @@ input, select {
 
 button {
   margin-top: 15px;
-  padding: 10px;
   width: 100%;
+  padding: 10px;
   background: #0078d4;
   color: white;
   border: none;
   border-radius: 5px;
 }
 
-#error {
-  color: red;
-  margin-top: 10px;
+.result {
+  margin-top: 15px;
+  font-weight: bold;
 }
 </style>
 </head>
 
 <body>
 
-<div class="box">
-  <h3>Calculation</h3>
+<div class="card">
+  <h3>Average Balance Calculator</h3>
 
-  <label>A</label>
-  <input id="A" type="number">
+  <label>Opening Balance (A)</label>
+  <input id="A" type="number" value="0">
 
-  <label>B</label>
-  <input id="B" type="number">
+  <label>Closing Balance (B)</label>
+  <input id="B" type="number" value="400000">
 
-  <label>D</label>
-  <input id="D" type="number">
-
-  <label>C (Field)</label>
+  <label>Month (C)</label>
   <select id="C">
-    <option value="">Select</option>
-    <option value="Field1">Field1</option>
-    <option value="Field2">Field2</option>
-    <option value="Field3">Field3</option>
+    <option>Jan</option><option>Feb</option><option>Mar</option>
+    <option>Apr</option><option>May</option><option>Jun</option>
+    <option selected>Jul</option><option>Aug</option><option>Sep</option>
+    <option>Oct</option><option>Nov</option><option>Dec</option>
   </select>
 
-  <button onclick="calculate()">Calculate</button>
-  <button onclick="exportCSV()">Export to Excel</button>
+  <label>Days Used (D)</label>
+  <input id="D" type="number" value="3.1">
 
-  <p><b>Result:</b> <span id="result"></span></p>
-  <div id="error"></div>
+  <button onclick="calculate()">Calculate</button>
+
+  <div class="result">
+    Result: <span id="result">–</span>
+  </div>
 </div>
 
 <script>
-// Field list (replaces VLOOKUP)
 const fieldList = {
-  Field1: 10,
-  Field2: 20,
-  Field3: 30
+  Jan: 31, Feb: 28, Mar: 31, Apr: 30,
+  May: 31, Jun: 30, Jul: 31, Aug: 31,
+  Sep: 30, Oct: 31, Nov: 30, Dec: 31
 };
 
-let lastResult = "";
-
 function calculate() {
-  let A = Number(Ainput.value);
-  let B = Number(Binput.value);
-  let D = Number(Dinput.value);
-  let C = Cinput.value;
+  let A = Number(document.getElementById("A").value);
+  let B = Number(document.getElementById("B").value);
+  let D = Number(document.getElementById("D").value);
+  let C = document.getElementById("C").value;
 
-  error.textContent = "";
-  result.textContent = "";
+  let days = fieldList[C];
 
-  if (!C || !fieldList[C]) {
-    error.textContent = "Please select a valid field";
-    return;
-  }
+  let result =
+    ((A * (days - D)) + (D * B)) / days;
 
-  let lookup = fieldList[C];
-
-  lastResult = ((A * (lookup - D)) + (D * B)) / lookup;
-  result.textContent = lastResult.toFixed(2);
+  document.getElementById("result").textContent =
+    result.toFixed(2);
 }
-
-function exportCSV() {
-  if (lastResult === "") {
-    error.textContent = "Calculate first";
-    return;
-  }
-
-  let csv =
-    "A,B,D,C,Result\n" +
-    `${Ainput.value},${Binput.value},${Dinput.value},${Cinput.value},${lastResult}`;
-
-  let blob = new Blob([csv], { type: "text/csv" });
-  let link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = "result.csv";
-  link.click();
-}
-
-// Shortcuts
-const Ainput = document.getElementById("A");
-const Binput = document.getElementById("B");
-const Dinput = document.getElementById("D");
-const Cinput = document.getElementById("C");
-const result = document.getElementById("result");
-const error = document.getElementById("error");
 </script>
 
 </body>
