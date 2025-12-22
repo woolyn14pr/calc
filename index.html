@@ -16,15 +16,19 @@
     .out p { margin:6px 0; }
     #error { margin-top:10px; color:#b91c1c; font-weight:600; }
     small { color:#6b7280; display:block; margin-top:6px; }
+
+    /* Tooltip */
+    .tip {
+      border-bottom: 1px dotted #6b7280;
+      cursor: help;
+    }
   </style>
 </head>
 
 <body>
   <div class="card">
     <h3>Average Balance Calculator</h3>
-    <small>
-      Days Required is calculated automatically to achieve the selected rate.
-    </small>
+    <small>Fields are simplified; calculations match the Excel model.</small>
 
     <div class="row">
       <div>
@@ -47,7 +51,11 @@
         </select>
       </div>
       <div>
-        <label>Target Rate</label>
+        <label>
+          <span class="tip" title="The interest rate tier you want to achieve. The calculator works out how many days are required to reach this rate.">
+            Target Rate
+          </span>
+        </label>
         <select id="target">
           <option value="40000" selected>3.33%</option>
           <option value="20000">2.33%</option>
@@ -61,11 +69,32 @@
     <div id="error"></div>
 
     <div class="out">
-      <p><b>Days Required:</b> <span id="daysReq">–</span></p>
-      <p><b>Average Balance:</b> <span id="avg">–</span></p>
-      <p><b>Client Rate:</b> <span id="rate">–</span></p>
-      <p><b>Cut Off Date:</b> <span id="cutoff">–</span></p>
-      <p><b>Remaining Days:</b> <span id="remaining">–</span></p>
+      <p>
+        <b>
+          <span class="tip" title="The average balance achieved over the month based on opening balance, closing balance, and timing.">
+            Average Balance
+          </span>:
+        </b>
+        <span id="avg">–</span>
+      </p>
+
+      <p>
+        <b>
+          <span class="tip" title="The interest rate tier that applies based on the calculated average balance.">
+            Client Rate
+          </span>:
+        </b>
+        <span id="rate">–</span>
+      </p>
+
+      <p>
+        <b>
+          <span class="tip" title="The latest day in the month by which the balance must be reached to qualify for the selected rate.">
+            Cut Off Date
+          </span>:
+        </b>
+        <span id="cutoff">–</span>
+      </p>
     </div>
   </div>
 
@@ -88,11 +117,9 @@ const CEl = document.getElementById("C");
 const targetEl = document.getElementById("target");
 
 const errEl = document.getElementById("error");
-const daysReqEl = document.getElementById("daysReq");
 const avgEl = document.getElementById("avg");
 const rateEl = document.getElementById("rate");
 const cutoffEl = document.getElementById("cutoff");
-const remainingEl = document.getElementById("remaining");
 
 function formatMoney(x) {
   return x.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -123,6 +150,7 @@ function avgBalance(A,B,days,D) {
 
 function calculate() {
   errEl.textContent = "";
+
   const A = Number(AEl.value);
   const B = Number(BEl.value);
   const month = CEl.value;
@@ -137,29 +165,29 @@ function calculate() {
   const solved = solveDaysRequired(A,B,days,target);
 
   if (solved.status === "IMPOSSIBLE") {
-    daysReqEl.textContent = "Not achievable";
     avgEl.textContent = "–";
     rateEl.textContent = "–";
     cutoffEl.textContent = "–";
-    remainingEl.textContent = "–";
     return;
   }
 
   const D = solved.status === "MEETS" ? 0 : solved.value;
   const avg = avgBalance(A,B,days,D);
 
-  daysReqEl.textContent = solved.status === "MEETS" ? "Meets minimum" : D.toFixed(2);
   avgEl.textContent = formatMoney(avg);
   rateEl.textContent = formatPct(getClientRate(avg));
 
   const cut = days - Math.ceil(D);
-  cutoffEl.textContent = solved.status === "MEETS" ? "Meets minimum" : `${cut} ${month}`;
-  remainingEl.textContent = solved.status === "MEETS" ? days : cut;
+  cutoffEl.textContent = solved.status === "MEETS"
+    ? "Meets minimum"
+    : `${cut} ${month}`;
 }
 
 function exportCSV() {
-  const csv = "Opening,Closing,Month,DaysRequired,AverageBalance,ClientRate\n" +
-    `${AEl.value},${BEl.value},${CEl.value},${daysReqEl.textContent},${avgEl.textContent},${rateEl.textContent}`;
+  const csv =
+    "Opening,Closing,Month,AverageBalance,ClientRate,CutOffDate\n" +
+    `${AEl.value},${BEl.value},${CEl.value},${avgEl.textContent},${rateEl.textContent},${cutoffEl.textContent}`;
+
   const blob = new Blob([csv],{type:"text/csv"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
