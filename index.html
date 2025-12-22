@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html>
 <head>
@@ -30,7 +29,6 @@
     .out p { margin:8px 0; }
     .muted { color:#6b7280; font-size: 13px; }
     #error { margin-top:10px; color:#b91c1c; font-weight:700; }
-    .divider { margin-top:14px; border-top:1px solid #e5e7eb; padding-top:14px; }
   </style>
 </head>
 
@@ -94,16 +92,6 @@
         <b>Cut Off Date:</b>
         <span id="cutoff">–</span>
       </p>
-
-      <div class="divider">
-        <p><b>Minimum Closing Balance & Cut Off Date (deposit today):</b></p>
-        <p class="muted">
-          This assumes you deposit <b>today</b> and hold that closing balance until month-end.
-          (If “today” is outside the selected month, this will show N/A.)
-        </p>
-        <p><b>Minimum Closing Balance:</b> <span id="minClose">–</span></p>
-        <p><b>Cut Off Date:</b> <span id="minCutoff">–</span></p>
-      </div>
     </div>
   </div>
 
@@ -116,7 +104,7 @@ const daysByMonth = {
 };
 
 /**
- * Rate tiers (from your Field list logic):
+ * Rate tiers:
  * < 20k => 0%
  * 20k to < 40k => 2.33%
  * >= 40k => 3.33%
@@ -137,10 +125,6 @@ function formatPercent(dec) {
   return (dec * 100).toFixed(2) + "%";
 }
 
-function monthIndex(mon) {
-  return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].indexOf(mon);
-}
-
 function daysInMonth(mon) {
   return daysByMonth[mon] ?? NaN;
 }
@@ -148,37 +132,24 @@ function daysInMonth(mon) {
 /**
  * GoalSeek equivalent:
  * Avg = A + D*(B-A)/days
- * Solve D for AvgTarget:
  * D = (AvgTarget - A) * days / (B - A)
- *
- * Matches VBA:
- * Range("E4").GoalSeek Goal:=40000, ChangingCell:=Range("D4")
- * Range("E4").GoalSeek Goal:=20000, ChangingCell:=Range("D4")
  */
 function solveDaysRequired(A, B, days, avgTarget) {
-  // If B == A, average is always A, cannot change with D.
   if (B === A) {
-    return (avgTarget <= A) ? -1 : NaN; // -1 => meets minimum, NaN => impossible
+    return (avgTarget <= A) ? -1 : NaN;
   }
   return ((avgTarget - A) * days) / (B - A);
 }
 
-/**
- * Cut Off Date (based on your sheet logic):
- * IF(DaysRequired < 0, "Meets minimum", DaysInMonth - ROUNDUP(DaysRequired,0))
- */
 function cutOffDayNumber(days, daysRequired) {
   if (!Number.isFinite(daysRequired)) return NaN;
-  if (daysRequired < 0) return null; // Meets minimum
-  const roundedUp = Math.ceil(daysRequired);
-  return days - roundedUp;
+  if (daysRequired < 0) return null;
+  return days - Math.ceil(daysRequired);
 }
 
 function makeDateString(dayNum, mon, year) {
   if (!Number.isFinite(dayNum)) return "–";
-  if (dayNum === null) return "Meets minimum";
-  if (dayNum <= 0) return "Meets minimum";
-  // Example: "28 Jul 2025"
+  if (dayNum === null || dayNum <= 0) return "Meets minimum";
   return `${dayNum} ${mon} ${year}`;
 }
 
@@ -197,15 +168,11 @@ const avgEl = document.getElementById("avg");
 const rateEl = document.getElementById("rate");
 const cutoffEl = document.getElementById("cutoff");
 
-const minCloseEl = document.getElementById("minClose");
-const minCutoffEl = document.getElementById("minCutoff");
-
 let last = null;
 
-// Default year to current year (user asked to update year)
+// Default year
 (function initYear() {
-  const now = new Date();
-  YEl.value = now.getFullYear();
+  YEl.value = new Date().getFullYear();
 })();
 
 function calculate() {
@@ -213,8 +180,6 @@ function calculate() {
   avgEl.textContent = "–";
   rateEl.textContent = "–";
   cutoffEl.textContent = "–";
-  minCloseEl.textContent = "–";
-  minCutoffEl.textContent = "–";
   last = null;
 
   const A = Number(AEl.value);
@@ -225,119 +190,53 @@ function calculate() {
   const targetRate = Number(TargetRateEl.value);
 
   if (![A, B, year].every(n => Number.isFinite(n))) {
-    errEl.textContent = "Please enter valid numbers for Opening Balance, Closing Balance, and Year.";
+    errEl.textContent = "Please enter valid numbers.";
     return;
   }
   if (!Number.isFinite(days)) {
-    errEl.textContent = "Month not found in field list.";
+    errEl.textContent = "Month not found.";
     return;
   }
 
-  // Determine target Avg Balance from selected target rate:
-  // 2.33% => target 20,000
-  // 3.33% => target 40,000
   const avgTarget = (targetRate === 0.0233) ? 20000 : 40000;
-
-  // GoalSeek equivalent: solve for Days Required
   const daysRequired = solveDaysRequired(A, B, days, avgTarget);
 
-  // Store hidden (still used)
   DaysReqHidden.value = Number.isFinite(daysRequired) ? daysRequired : "";
   DaysHidden.value = days;
 
-  // Compute Avg Balance using Excel formula:
-  // Avg = ((A*(days-D)) + (D*B)) / days
-  // Use the solved daysRequired (dynamic)
   if (!Number.isFinite(daysRequired)) {
-    errEl.textContent = "Cannot reach the target with these balances (check Opening vs Closing).";
+    errEl.textContent = "Cannot reach the target with these balances.";
     return;
   }
 
   const avgBalance = ((A * (days - daysRequired)) + (daysRequired * B)) / days;
+  const clientRate = rateFromAvg(avgBalance);
 
-  // Client Deposit Rate (based on Avg Balance tiers)
-  let clientRate = rateFromAvg(avgBalance);
-
-  // Your rule:
-  // If average balance is < 20000 for 2.33 target, client deposit rate should be 0%
-  // (This is already true via tier logic, but we keep it explicit.)
-  if (targetRate === 0.0233 && avgBalance < 20000) {
-    clientRate = 0;
-  }
-
-  // Cut off date includes month + year
-  const dayNum = cutOffDayNumber(days, daysRequired);
-  const cutOffText = makeDateString(dayNum, mon, year);
-
-  // Outputs
   avgEl.textContent = "£" + formatMoney(avgBalance);
   rateEl.textContent = formatPercent(clientRate);
-  cutoffEl.textContent = cutOffText;
-
-  // Extra bottom calculation:
-  // Minimum closing balance if you deposit TODAY and hold until month end.
-  // If today is outside selected month/year => N/A
-  const today = new Date();
-  const selMonthIdx = monthIndex(mon);
-
-  const isSameMonthYear =
-    (today.getFullYear() === year) && (today.getMonth() === selMonthIdx);
-
-  if (!isSameMonthYear) {
-    minCloseEl.textContent = "N/A";
-    minCutoffEl.textContent = "N/A";
-  } else {
-    const todayDay = today.getDate();
-    const remainingIncludingToday = (days - todayDay + 1);
-
-    if (remainingIncludingToday <= 0) {
-      minCloseEl.textContent = "N/A";
-      minCutoffEl.textContent = "N/A";
-    } else {
-      // Solve B_needed with D = remainingIncludingToday:
-      // AvgTarget = A + D*(B-A)/days  ->  B = A + (AvgTarget - A)*days / D
-      const minClosing = A + ((avgTarget - A) * days) / remainingIncludingToday;
-      minCloseEl.textContent = "£" + formatMoney(minClosing);
-      minCutoffEl.textContent = makeDateString(todayDay, mon, year);
-    }
-  }
+  cutoffEl.textContent = makeDateString(
+    cutOffDayNumber(days, daysRequired),
+    mon,
+    year
+  );
 
   last = {
-    opening: A, closing: B, month: mon, year, daysInMonth: days,
-    targetRate, avgTarget, daysRequired, avgBalance, clientRate, cutOffText
+    opening: A, closing: B, month: mon, year,
+    avgBalance, clientRate, cutOffText: cutoffEl.textContent
   };
 }
 
 function exportCSV() {
-  errEl.textContent = "";
-  if (!last) {
-    errEl.textContent = "Calculate first, then export.";
-    return;
-  }
+  if (!last) return;
 
-  const header = [
-    "OpeningBalance","ClosingBalance","Month","Year","DaysInMonth",
-    "TargetRate","TargetAvgBalance","DaysRequired",
-    "AverageBalance","ClientDepositRate","CutOffDate"
-  ].join(",");
+  const header =
+    "OpeningBalance,ClosingBalance,Month,Year,AverageBalance,ClientDepositRate,CutOffDate\n";
+  const row =
+    `${last.opening},${last.closing},${last.month},${last.year},` +
+    `${last.avgBalance},${(last.clientRate*100).toFixed(2)}%,` +
+    `"${last.cutOffText}"`;
 
-  const row = [
-    last.opening,
-    last.closing,
-    last.month,
-    last.year,
-    last.daysInMonth,
-    (last.targetRate * 100).toFixed(2) + "%",
-    last.avgTarget,
-    last.daysRequired,
-    last.avgBalance,
-    (last.clientRate * 100).toFixed(2) + "%",
-    `"${last.cutOffText}"`
-  ].join(",");
-
-  const csv = header + "\n" + row;
-
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob([header + row], { type: "text/csv;charset=utf-8" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
   link.download = "client-deposit-rate-calculator.csv";
