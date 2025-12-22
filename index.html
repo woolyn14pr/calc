@@ -16,4 +16,238 @@
     .out p { margin:6px 0; }
     #error { margin-top:10px; color:#b91c1c; font-weight:600; }
     small { color:#6b7280; display:block; margin-top:6px; }
-    .hint { color:#6
+    .hint { color:#6b7280; font-size:12px; margin-top:6px; }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <h3>Average Balance Calculator</h3>
+    <small>Uses your XLS formulas (Avg Balance, Client Rate, Cut Off logic). Days-in-month is hidden but still used.</small>
+
+    <div class="row">
+      <div>
+        <label>Opening Balance (£) (A4)</label>
+        <input id="A" type="number" step="0.01" value="0">
+      </div>
+      <div>
+        <label>Balance Closing (£) (B4)</label>
+        <input id="B" type="number" step="0.01" value="400000">
+      </div>
+    </div>
+
+    <label>Month (C4)</label>
+    <select id="C">
+      <option>Jan</option><option>Feb</option><option>Mar</option><option>Apr</option>
+      <option>May</option><option>Jun</option><option selected>Jul</option><option>Aug</option>
+      <option>Sep</option><option>Oct</option><option>Nov</option><option>Dec</option>
+    </select>
+
+    <div class="row">
+      <div>
+        <label>Days Required (D4)</label>
+        <input id="D" type="number" step="0.01" value="3.1">
+        <div class="hint">Changing this updates Cut Off Day using: DaysInMonth − CEILING(DaysRequired)</div>
+      </div>
+      <div>
+        <label>Cut Off Day (in month)</label>
+        <input id="CutOffDay" type="number" step="1" min="1" max="31" placeholder="e.g. 27">
+        <div class="hint">Changing this updates Days Required using: DaysInMonth − CutOffDay</div>
+      </div>
+    </div>
+
+    <button onclick="calculate()">Calculate</button>
+    <button class="secondary" onclick="exportCSV()">Export CSV (Excel)</button>
+
+    <div id="error"></div>
+
+    <div class="out">
+      <p><b>Avg Balance (E4):</b> <span id="avg">–</span></p>
+      <p><b>Client Rate (F4):</b> <span id="rate">–</span></p>
+      <p><b>Cut Off Date (H4):</b> <span id="cutoff">–</span></p>
+    </div>
+  </div>
+
+<script>
+/** Field list sheet (A2:B14) */
+const daysByMonth = {
+  Jan: 31, Feb: 28, Mar: 31, Apr: 30,
+  May: 31, Jun: 30, Jul: 31, Aug: 31,
+  Sep: 30, Oct: 31, Nov: 30, Dec: 31
+};
+
+/** Field list rates (E3, E4, E5) */
+const rateTier = {
+  lt20000: 0,       // Field list!E3
+  between: 0.0233,  // Field list!E4 (>= 20k and < 40k)
+  gte40000: 0.0333  // Field list!E5
+};
+
+let last = null;
+let syncing = false;
+
+const AEl = document.getElementById("A");
+const BEl = document.getElementById("B");
+const CEl = document.getElementById("C");
+const DEl = document.getElementById("D");
+const CutOffDayEl = document.getElementById("CutOffDay");
+
+const errEl = document.getElementById("error");
+const avgEl = document.getElementById("avg");
+const rateEl = document.getElementById("rate");
+const cutoffEl = document.getElementById("cutoff");
+
+function formatMoney(x) {
+  if (!Number.isFinite(x)) return "–";
+  return x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function getClientRate(avgBalance) {
+  // Excel: IF(E4<20000,E3,IF(E4>=40000,E5,E4))
+  if (avgBalance < 20000) return rateTier.lt20000;
+  if (avgBalance >= 40000) return rateTier.gte40000;
+  return rateTier.between;
+}
+
+function daysInMonth(month) {
+  return daysByMonth[month] ?? NaN;
+}
+
+/**
+ * Excel H4:
+ * =IF(D4<0,"Meets minimum", DaysInMonth - ROUNDUP(D4,0))
+ */
+function getCutOffDay(daysInMo, daysRequired) {
+  if (daysRequired < 0) return "Meets minimum";
+  return (daysInMo - Math.ceil(daysRequired));
+}
+
+function cutOffDisplay(cutOffDay, month) {
+  // User asked: add the month after the cut off number
+  if (cutOffDay === "Meets minimum") return "Meets minimum";
+  if (!Number.isFinite(cutOffDay)) return "–";
+  return `${cutOffDay} ${month}`;
+}
+
+/** Keep Days Required and Cut Off Day in sync (dynamic) */
+function syncFromDaysRequired() {
+  if (syncing) return;
+  syncing = true;
+
+  const month = CEl.value;
+  const dim = daysInMonth(month);
+  const d = Number(DEl.value);
+
+  if (Number.isFinite(dim) && Number.isFinite(d)) {
+    const cut = getCutOffDay(dim, d);
+    if (cut !== "Meets minimum" && Number.isFinite(cut)) {
+      CutOffDayEl.value = cut;
+    } else {
+      CutOffDayEl.value = "";
+    }
+  }
+
+  syncing = false;
+}
+
+function syncFromCutOffDay() {
+  if (syncing) return;
+  syncing = true;
+
+  const month = CEl.value;
+  const dim = daysInMonth(month);
+  const cut = Number(CutOffDayEl.value);
+
+  if (Number.isFinite(dim) && Number.isFinite(cut)) {
+    // Inverse relationship to keep it dynamic:
+    // DaysRequired = DaysInMonth - CutOffDay
+    const d = (dim - cut);
+    DEl.value = d;
+  }
+
+  syncing = false;
+}
+
+DEl.addEventListener("input", syncFromDaysRequired);
+CutOffDayEl.addEventListener("input", syncFromCutOffDay);
+CEl.addEventListener("change", () => {
+  // when month changes, re-sync using current Days Required
+  syncFromDaysRequired();
+});
+
+syncFromDaysRequired();
+
+function calculate() {
+  errEl.textContent = "";
+  avgEl.textContent = "–";
+  rateEl.textContent = "–";
+  cutoffEl.textContent = "–";
+  last = null;
+
+  const A = Number(AEl.value);
+  const B = Number(BEl.value);
+  const month = CEl.value;
+  const D = Number(DEl.value);
+  const dim = daysInMonth(month);
+
+  if (!Number.isFinite(dim)) {
+    errEl.textContent = "Month not found in Field list.";
+    return;
+  }
+  if (![A, B, D].every(n => Number.isFinite(n))) {
+    errEl.textContent = "Please enter valid numbers for Opening, Closing, and Days Required.";
+    return;
+  }
+
+  // Excel E4:
+  // =(((A4*(DaysInMonth-D4))+(D4*B4)))/DaysInMonth
+  const avgBalance = ((A * (dim - D)) + (D * B)) / dim;
+
+  // Excel F4:
+  const clientRate = getClientRate(avgBalance);
+
+  // Excel H4 (day number) + month for display:
+  const cutDay = getCutOffDay(dim, D);
+  const cutText = cutOffDisplay(cutDay, month);
+
+  avgEl.textContent = formatMoney(avgBalance);
+  rateEl.textContent = clientRate.toFixed(4);
+  cutoffEl.textContent = cutText;
+
+  last = {
+    A, B, month, dim,
+    daysRequired: D,
+    avgBalance, clientRate,
+    cutOff: cutText
+  };
+}
+
+function exportCSV() {
+  errEl.textContent = "";
+  if (!last) {
+    errEl.textContent = "Calculate first, then export.";
+    return;
+  }
+
+  const header = [
+    "OpeningBalance","ClosingBalance","Month","DaysInMonth",
+    "DaysRequired","AvgBalance","ClientRate","CutOffDate"
+  ].join(",");
+
+  const row = [
+    last.A, last.B, last.month, last.dim,
+    last.daysRequired, last.avgBalance, last.clientRate,
+    `"${last.cutOff}"`
+  ].join(",");
+
+  const csv = header + "\n" + row;
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "avg-balance-calculator.csv";
+  link.click();
+}
+</script>
+</body>
+</html>
