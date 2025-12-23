@@ -92,10 +92,6 @@
       cursor: pointer;
     }
 
-    button.secondary {
-      background: #111827;
-    }
-
     .out {
       margin-top: 18px;
       padding: 18px;
@@ -107,11 +103,6 @@
     .out p {
       margin: 10px 0;
       font-size: 15px;
-    }
-
-    .muted {
-      color: var(--muted);
-      font-size: 13px;
     }
 
     #error {
@@ -126,24 +117,25 @@
   <div class="card">
     <h3>Client Deposit Rate Calculator</h3>
     <div class="intro">
-      This calculator helps a Banker determine when a client needs to deposit funds
-      in order to meet the <b>minimum average balance</b> and achieve the selected Client Deposit Rate.
+      Enables you to determine when a client needs to deposit funds in order to meet the
+      minimum average balance for the specific month and achieve the selected
+      promotional client deposit rate.
     </div>
 
     <div class="row">
       <div>
-        <label title="Balance at the start of the month.">Opening Balance (£)</label>
+        <label>Opening Balance (£)</label>
         <input id="A" type="number" step="0.01" value="0">
       </div>
       <div>
-        <label title="Balance after your deposit (the balance you will hold after the cut-off date).">Closing Balance (£)</label>
+        <label>Closing Balance (£)</label>
         <input id="B" type="number" step="0.01" value="40000">
       </div>
     </div>
 
     <div class="row">
       <div>
-        <label title="Month used to determine days in month.">Month</label>
+        <label>Month</label>
         <select id="C">
           <option>Jan</option><option>Feb</option><option>Mar</option><option>Apr</option>
           <option>May</option><option>Jun</option><option>Jul</option><option>Aug</option>
@@ -151,14 +143,12 @@
         </select>
       </div>
       <div>
-        <label title="Year used for the cut-off date display.">Year</label>
-        <input id="Y" type="number">
+        <label>Year</label>
+        <input id="Y" type="number" min="2025">
       </div>
     </div>
 
-    <label title="Select the rate you want to achieve.">
-      Client Deposit Rate (target)
-    </label>
+    <label>Client Deposit Rate (target)</label>
     <select id="TargetRate">
       <option value="0.0233">2.33%</option>
       <option value="0.0333" selected>3.33%</option>
@@ -213,12 +203,12 @@ const BEl = document.getElementById("B");
 const CEl = document.getElementById("C");
 const YEl = document.getElementById("Y");
 const TargetRateEl = document.getElementById("TargetRate");
-
 const avgEl = document.getElementById("avg");
 const cutoffEl = document.getElementById("cutoff");
 const errEl = document.getElementById("error");
 
-YEl.value = new Date().getFullYear();
+// Default year (floored to 2025)
+YEl.value = Math.max(new Date().getFullYear(), 2025);
 
 function calculate() {
   errEl.textContent = "";
@@ -228,7 +218,9 @@ function calculate() {
   const A = Number(AEl.value);
   const B = Number(BEl.value);
   const mon = CEl.value;
-  const year = Number(YEl.value);
+  const year = Math.max(Number(YEl.value), 2025);
+  YEl.value = year;
+
   const days = daysInMonth(mon);
   const targetRate = Number(TargetRateEl.value);
 
