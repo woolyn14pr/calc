@@ -63,12 +63,6 @@
       color: var(--text);
     }
 
-    input:focus, select:focus {
-      outline: none;
-      border-color: var(--allica-orange);
-      box-shadow: 0 0 0 4px rgba(255,110,1,.18);
-    }
-
     .row {
       display: flex;
       gap: 16px;
@@ -124,12 +118,12 @@
 
     <div class="row">
       <div>
-        <label>Opening Balance (£)</label>
+        <label>Opening Monthly Balance (£)</label>
         <input id="A" type="number" step="0.01" value="0">
       </div>
       <div>
-        <label>Closing Balance (£)</label>
-        <input id="B" type="number" step="0.01" value="40000">
+        <label>Closing Monthly Balance (£)</label>
+        <input id="B" type="number" step="0.01" value="50000">
       </div>
     </div>
 
@@ -207,7 +201,6 @@ const avgEl = document.getElementById("avg");
 const cutoffEl = document.getElementById("cutoff");
 const errEl = document.getElementById("error");
 
-// Default year (floored to 2025)
 YEl.value = Math.max(new Date().getFullYear(), 2025);
 
 function calculate() {
