@@ -119,11 +119,6 @@
       color: var(--danger);
       font-weight: 700;
     }
-
-    @media (max-width: 560px){
-      body { padding: 16px; }
-      .card { padding: 18px; }
-    }
   </style>
 </head>
 
@@ -132,7 +127,7 @@
     <h3>Client Deposit Rate Calculator</h3>
     <div class="intro">
       This calculator helps a Banker determine when a client needs to deposit funds
-      in order to meet the minimum balance and achieve the selected Client Deposit Rate.
+      in order to meet the <b>minimum average balance</b> and achieve the selected Client Deposit Rate.
     </div>
 
     <div class="row">
@@ -169,11 +164,7 @@
       <option value="0.0333" selected>3.33%</option>
     </select>
 
-    <input id="DaysRequiredHidden" type="hidden">
-    <input id="DaysInMonthHidden" type="hidden">
-
     <button onclick="calculate()">Calculate</button>
-    <button class="secondary" onclick="exportCSV()">Export CSV (Excel)</button>
 
     <div id="error"></div>
 
