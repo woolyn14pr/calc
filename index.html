@@ -4,39 +4,135 @@
   <meta charset="UTF-8" />
   <title>Client Deposit Rate Calculator</title>
   <style>
-    body { font-family: Arial; background:#f4f6f8; padding:20px; }
+    :root{
+      --allica-orange:#FF6E01;
+      --bg:#FAF8F4;
+      --panel:#ffffff;
+      --panel-soft:#FFF8F1;
+      --text:#111827;
+      --muted:#6b7280;
+      --border:#e5e7eb;
+      --danger:#b91c1c;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      padding: 24px;
+      color: var(--text);
+    }
+
     .card {
-      background:#fff; padding:20px; max-width:560px; border-radius:12px;
-      box-shadow: 0 2px 10px rgba(0,0,0,.06);
+      background: var(--panel);
+      padding: 24px;
+      max-width: 780px;
+      margin: 0 auto;
+      border-radius: 14px;
+      box-shadow: 0 12px 28px rgba(17,24,39,.08);
+      border: 1px solid rgba(17,24,39,.05);
     }
-    label { display:block; margin-top:12px; font-weight:700; }
+
+    h3 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: -0.2px;
+    }
+
+    .intro {
+      margin-top: 8px;
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    label {
+      display: block;
+      margin-top: 14px;
+      font-weight: 700;
+    }
+
     input, select {
-      width:100%; padding:10px; margin-top:6px;
-      border:1px solid #d6dbe1; border-radius:10px;
+      width: 100%;
+      padding: 12px;
+      margin-top: 8px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+      color: var(--text);
     }
-    .row { display:flex; gap:12px; }
-    .row > div { flex:1; }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--allica-orange);
+      box-shadow: 0 0 0 4px rgba(255,110,1,.18);
+    }
+
+    .row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .row > div {
+      flex: 1 1 280px;
+      min-width: 280px;
+    }
+
     button {
-      margin-top:14px; width:100%; padding:12px;
-      border:0; border-radius:10px; background:#0078d4; color:#fff;
-      font-weight:800; cursor:pointer;
+      margin-top: 18px;
+      width: 100%;
+      padding: 14px;
+      border: 0;
+      border-radius: 12px;
+      background: var(--allica-orange);
+      color: #fff;
+      font-weight: 800;
+      cursor: pointer;
     }
-    button.secondary { background:#374151; }
+
+    button.secondary {
+      background: #111827;
+    }
+
     .out {
-      margin-top:14px; padding:14px; background:#f8fafc;
-      border:1px solid #e5e7eb; border-radius:12px;
+      margin-top: 18px;
+      padding: 18px;
+      background: var(--panel-soft);
+      border: 1px solid rgba(255,110,1,.25);
+      border-radius: 14px;
     }
-    .out p { margin:8px 0; }
-    .muted { color:#6b7280; font-size: 13px; }
-    #error { margin-top:10px; color:#b91c1c; font-weight:700; }
+
+    .out p {
+      margin: 10px 0;
+      font-size: 15px;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    #error {
+      margin-top: 12px;
+      color: var(--danger);
+      font-weight: 700;
+    }
+
+    @media (max-width: 560px){
+      body { padding: 16px; }
+      .card { padding: 18px; }
+    }
   </style>
 </head>
 
 <body>
   <div class="card">
     <h3>Client Deposit Rate Calculator</h3>
-    <div class="muted">
-      Tooltips are available — hover over labels to see what each field means.
+    <div class="intro">
+      This calculator helps a Banker determine when a client needs to deposit funds
+      in order to meet the minimum balance and achieve the selected Client Deposit Rate.
     </div>
 
     <div class="row">
@@ -52,7 +148,7 @@
 
     <div class="row">
       <div>
-        <label title="Month used to determine days in month (hidden but used in calculations).">Month</label>
+        <label title="Month used to determine days in month.">Month</label>
         <select id="C">
           <option>Jan</option><option>Feb</option><option>Mar</option><option>Apr</option>
           <option>May</option><option>Jun</option><option>Jul</option><option>Aug</option>
@@ -61,11 +157,11 @@
       </div>
       <div>
         <label title="Year used for the cut-off date display.">Year</label>
-        <input id="Y" type="number" step="1">
+        <input id="Y" type="number">
       </div>
     </div>
 
-    <label title="Select the rate you want to achieve. This triggers the GoalSeek-style calculation.">
+    <label title="Select the rate you want to achieve.">
       Client Deposit Rate (target)
     </label>
     <select id="TargetRate">
@@ -83,10 +179,7 @@
 
     <div class="out">
       <p><b>Average Balance:</b> <span id="avg">–</span></p>
-      <p>
-        <b>Deposit Cut-Off Date:</b>
-        <span id="cutoff">–</span>
-      </p>
+      <p><b>Deposit Cut-Off Date:</b> <span id="cutoff">–</span></p>
     </div>
   </div>
 
@@ -96,12 +189,6 @@ const daysByMonth = {
   May: 31, Jun: 30, Jul: 31, Aug: 31,
   Sep: 30, Oct: 31, Nov: 30, Dec: 31
 };
-
-function rateFromAvg(avg) {
-  if (avg < 20000) return 0;
-  if (avg >= 40000) return 0.0333;
-  return 0.0233;
-}
 
 function formatMoney(x) {
   if (!Number.isFinite(x)) return "–";
@@ -136,13 +223,11 @@ const CEl = document.getElementById("C");
 const YEl = document.getElementById("Y");
 const TargetRateEl = document.getElementById("TargetRate");
 
-const errEl = document.getElementById("error");
 const avgEl = document.getElementById("avg");
 const cutoffEl = document.getElementById("cutoff");
+const errEl = document.getElementById("error");
 
-(function initYear() {
-  YEl.value = new Date().getFullYear();
-})();
+YEl.value = new Date().getFullYear();
 
 function calculate() {
   errEl.textContent = "";
